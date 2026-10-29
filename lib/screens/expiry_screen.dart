@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/ids.dart';
 import '../core/money.dart';
 import '../data/medicine_repo.dart';
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../widgets/common.dart';
 
@@ -30,20 +31,21 @@ class _ExpiryScreenState extends State<ExpiryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     final today = DateTime.now();
     final cs = Theme.of(context).colorScheme;
     final lossValue = _list.fold<int>(0, (s, b) => s + b.qty * b.buyPrice);
     return Scaffold(
-      appBar: AppBar(title: const Text('Expiry alert')),
+      appBar: AppBar(title: Text(l.expiryAlert)),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 30, label: Text('30 days')),
-              ButtonSegment(value: 60, label: Text('60 days')),
-              ButtonSegment(value: 90, label: Text('90 days')),
-              ButtonSegment(value: 180, label: Text('6 months')),
+            segments: [
+              ButtonSegment(value: 30, label: Text(l.days('30'))),
+              ButtonSegment(value: 60, label: Text(l.days('60'))),
+              ButtonSegment(value: 90, label: Text(l.days('90'))),
+              ButtonSegment(value: 180, label: Text(l.sixMonths)),
             ],
             selected: {_days},
             onSelectionChanged: (s) {
@@ -55,24 +57,27 @@ class _ExpiryScreenState extends State<ExpiryScreen> {
         if (_list.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: StatRow('Stock value at risk (buy price)', Money.format(lossValue), bold: true, color: cs.error),
+            child: StatRow(l.atRiskValue, Money.format(lossValue), bold: true, color: cs.error),
           ),
         Expanded(
           child: _list.isEmpty
-              ? const EmptyState(icon: Icons.verified_outlined, text: 'Nothing expiring in this period')
+              ? EmptyState(icon: Icons.verified_outlined, text: l.nothingExpiring)
               : ListView.separated(
                   itemCount: _list.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final b = _list[i];
                     final d = b.daysToExpiry(today);
-                    final label = d < 0 ? 'EXPIRED ${-d}d ago' : d == 0 ? 'Expires today' : 'in $d days';
+                    final label = d < 0 ? l.expiredAgo('${-d}') : d == 0 ? l.expiresToday : l.inDays('$d');
                     return ListTile(
                       leading: Icon(d < 0 ? Icons.dangerous_outlined : Icons.warning_amber_rounded,
                           color: d < 30 ? cs.error : Colors.orange),
                       title: Text(b.medicineName ?? ''),
-                      subtitle: Text(
-                          '${b.qty} pcs${b.batchNo != null ? ' · Batch ${b.batchNo}' : ''} · Exp ${displayDateFmt.format(b.expiry)}'),
+                      subtitle: Text([
+                        l.stockLabel('${b.qty}'),
+                        if (b.batchNo != null) l.batchTitle(b.batchNo!),
+                        l.expShort(displayDateFmt.format(b.expiry)),
+                      ].join(' · ')),
                       trailing: Text(label,
                           style: TextStyle(color: d < 30 ? cs.error : Colors.orange, fontWeight: FontWeight.bold)),
                     );

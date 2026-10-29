@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/ids.dart';
 import '../core/money.dart';
 import '../data/customer_repo.dart';
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../widgets/common.dart';
 import 'customer_picker.dart';
@@ -45,11 +46,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Baki khata')),
+      appBar: AppBar(title: Text(l.bakiKhata)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.person_add),
-        label: const Text('Customer'),
+        label: Text(l.customer),
         onPressed: () async {
           final c = await editCustomer(context);
           if (c != null) _open(c);
@@ -61,7 +63,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           color: Theme.of(context).colorScheme.errorContainer,
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: StatRow('Total baki to collect', Money.format(_total), bold: true),
+            child: StatRow(l.totalBakiToCollect, Money.format(_total), bold: true),
           ),
         ),
         Padding(
@@ -70,13 +72,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
             Expanded(
               child: TextField(
                 controller: _q,
-                decoration: const InputDecoration(hintText: 'Search name / phone', prefixIcon: Icon(Icons.search)),
+                decoration: InputDecoration(hintText: l.searchNamePhone, prefixIcon: const Icon(Icons.search)),
                 onChanged: (_) => _load(),
               ),
             ),
             const SizedBox(width: 8),
             FilterChip(
-              label: const Text('Has due'),
+              label: Text(l.hasDue),
               selected: _onlyDue,
               onSelected: (v) {
                 setState(() => _onlyDue = v);
@@ -87,7 +89,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         ),
         Expanded(
           child: _list.isEmpty
-              ? const EmptyState(icon: Icons.menu_book_outlined, text: 'No customers here')
+              ? EmptyState(icon: Icons.menu_book_outlined, text: l.noCustomers)
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 88),
                   itemCount: _list.length,
@@ -142,20 +144,22 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   }
 
   Future<void> _addEntry(String type) async {
-    final amount = TextEditingController(text: type == 'payment' && (_c?.balance ?? 0) > 0 ? Money.toInput(_c!.balance) : '');
+    final l = context.l10n;
+    final amount =
+        TextEditingController(text: type == 'payment' && (_c?.balance ?? 0) > 0 ? Money.toInput(_c!.balance) : '');
     final note = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(type == 'payment' ? 'Payment received' : 'Add baki'),
+        title: Text(type == 'payment' ? l.paymentReceived : l.addBaki),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          MoneyField(controller: amount, label: 'Amount', autofocus: true),
+          MoneyField(controller: amount, label: l.amount, autofocus: true),
           const SizedBox(height: 8),
-          TextField(controller: note, decoration: const InputDecoration(labelText: 'Note')),
+          TextField(controller: note, decoration: InputDecoration(labelText: l.note)),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
         ],
       ),
     );
@@ -169,6 +173,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   Widget build(BuildContext context) {
     final c = _c;
     if (c == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final l = context.l10n;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(c.name), actions: [
@@ -186,20 +191,20 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(children: [
-              if (c.phone != null && c.phone!.isNotEmpty) StatRow('Phone', c.phone!),
-              StatRow('Current baki', Money.format(c.balance), bold: true, color: c.balance > 0 ? cs.error : cs.primary),
+              if (c.phone != null && c.phone!.isNotEmpty) StatRow(l.phone, c.phone!),
+              StatRow(l.currentBaki, Money.format(c.balance), bold: true, color: c.balance > 0 ? cs.error : cs.primary),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
                   child: FilledButton.icon(
                       onPressed: () => _addEntry('payment'),
                       icon: const Icon(Icons.payments_outlined),
-                      label: const Text('Got payment')),
+                      label: Text(l.gotPayment)),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                      onPressed: () => _addEntry('due'), icon: const Icon(Icons.add), label: const Text('Add baki')),
+                      onPressed: () => _addEntry('due'), icon: const Icon(Icons.add), label: Text(l.addBaki)),
                 ),
               ]),
             ]),
@@ -207,30 +212,40 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         ),
         Expanded(
           child: _entries.isEmpty
-              ? const EmptyState(icon: Icons.receipt_long_outlined, text: 'No entries yet')
+              ? EmptyState(icon: Icons.receipt_long_outlined, text: l.noEntries)
               : ListView.separated(
                   itemCount: _entries.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final e = _entries[i];
                     final when = DateTime.fromMillisecondsSinceEpoch(e.entryAt);
+                    final color = e.isDue ? cs.error : cs.primary;
                     return ListTile(
-                      leading: Icon(e.isDue ? Icons.arrow_upward : Icons.arrow_downward,
-                          color: e.isDue ? cs.error : cs.primary),
-                      title: Text(e.isDue ? 'Baki' : 'Payment'),
+                      leading: Icon(
+                          e.isDue
+                              ? Icons.arrow_upward
+                              : e.isReturn
+                                  ? Icons.assignment_return_outlined
+                                  : Icons.arrow_downward,
+                          color: color),
+                      title: Text(e.isDue
+                          ? l.entryBaki
+                          : e.isReturn
+                              ? l.entryReturn
+                              : l.entryPayment),
                       subtitle: Text([displayDateTimeFmt.format(when), if (e.note != null) e.note!].join(' · ')),
                       trailing: Text('${e.isDue ? '+' : '−'}${Money.format(e.amount)}',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: e.isDue ? cs.error : cs.primary)),
+                          style: TextStyle(fontWeight: FontWeight.bold, color: color)),
                       onLongPress: e.saleId != null
                           ? null
                           : () async {
                               final del = await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  title: const Text('Delete this entry?'),
+                                  title: Text(l.deleteEntry),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
-                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.no)),
+                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete)),
                                   ],
                                 ),
                               );

@@ -7,6 +7,9 @@ class Money {
 
   static String format(int poisha) => '৳${_fmt.format(poisha / 100)}';
 
+  /// Without the ৳ sign, for receipts: thermal printers and PDF base fonts can't draw it.
+  static String plain(int poisha) => _fmt.format(poisha / 100);
+
   /// Parses user input like "12.5" or "1,200" into poisha. Returns 0 on bad input.
   static int parse(String input) {
     final cleaned = input.replaceAll(',', '').replaceAll('৳', '').trim();

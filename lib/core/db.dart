@@ -10,6 +10,7 @@ const syncedTables = [
   'customers',
   'sales',
   'sale_items',
+  'sale_returns',
   'credit_entries',
 ];
 
@@ -38,7 +39,9 @@ class AppDatabase {
     return i;
   }
 
-  static const schemaVersion = 1;
+  /// v2: pack units + low-stock level on medicines, sold unit + returns on sale items,
+  /// sale_returns table, and 'return' credit entries.
+  static const schemaVersion = 2;
 
   /// [path] / [factory] can be overridden in tests (e.g. in-memory ffi db).
   static Future<AppDatabase> open({String? path, DatabaseFactory? factory}) async {
@@ -50,6 +53,7 @@ class AppDatabase {
         version: schemaVersion,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
     _instance = AppDatabase._(db);
@@ -72,6 +76,7 @@ class AppDatabase {
         unit TEXT NOT NULL DEFAULT 'pcs',
         sell_price INTEGER NOT NULL DEFAULT 0,
         barcode TEXT,
+        $_medicineV2Cols,
         $_syncCols
       )''');
     b.execute('CREATE INDEX idx_medicines_name ON medicines(name)');
@@ -123,14 +128,58 @@ class AppDatabase {
         unit_price INTEGER NOT NULL,
         buy_price INTEGER NOT NULL,
         line_total INTEGER NOT NULL,
+        $_saleItemV2Cols,
         $_syncCols
       )''');
     b.execute('CREATE INDEX idx_items_sale ON sale_items(sale_id)');
+    _createSaleReturns(b);
+    _createCreditEntries(b, 'credit_entries');
+    b.execute('CREATE INDEX idx_credit_customer ON credit_entries(customer_id)');
+    b.insert('app_meta', {'key': 'device_id', 'value': newId()});
+    b.insert('app_meta', {'key': 'invoice_seq', 'value': '0'});
+    await b.commit(noResult: true);
+  }
+
+  /// Quantities are always stored in the medicine's base unit (e.g. tablet).
+  /// strip_size / box_size = base units per strip / box (0 = not sold that way).
+  static const _medicineV2Cols = '''
+    reorder_level INTEGER NOT NULL DEFAULT 0,
+    strip_size INTEGER NOT NULL DEFAULT 0,
+    box_size INTEGER NOT NULL DEFAULT 0
+  ''';
+
+  /// qty and returned_qty are base units; unit_price is per sold unit (unit_factor base units).
+  /// sold_unit NULL means the medicine's base unit.
+  static const _saleItemV2Cols = '''
+    sold_unit TEXT,
+    unit_factor INTEGER NOT NULL DEFAULT 1,
+    returned_qty INTEGER NOT NULL DEFAULT 0
+  ''';
+
+  static void _createSaleReturns(Batch b) {
     b.execute('''
-      CREATE TABLE credit_entries (
+      CREATE TABLE sale_returns (
+        id TEXT PRIMARY KEY,
+        sale_id TEXT NOT NULL REFERENCES sales(id),
+        returned_at INTEGER NOT NULL,
+        return_date TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        cost INTEGER NOT NULL,
+        refund INTEGER NOT NULL,
+        baki_reduced INTEGER NOT NULL,
+        $_syncCols
+      )''');
+    b.execute('CREATE INDEX idx_returns_date ON sale_returns(return_date)');
+    b.execute('CREATE INDEX idx_returns_sale ON sale_returns(sale_id)');
+  }
+
+  /// type: 'due' adds to baki; 'payment' (cash received) and 'return' (goods returned) reduce it.
+  static void _createCreditEntries(Batch b, String table) {
+    b.execute('''
+      CREATE TABLE $table (
         id TEXT PRIMARY KEY,
         customer_id TEXT NOT NULL REFERENCES customers(id),
-        type TEXT NOT NULL CHECK (type IN ('due','payment')),
+        type TEXT NOT NULL CHECK (type IN ('due','payment','return')),
         amount INTEGER NOT NULL,
         sale_id TEXT REFERENCES sales(id),
         note TEXT,
@@ -138,10 +187,26 @@ class AppDatabase {
         entry_date TEXT NOT NULL,
         $_syncCols
       )''');
-    b.execute('CREATE INDEX idx_credit_customer ON credit_entries(customer_id)');
-    b.insert('app_meta', {'key': 'device_id', 'value': newId()});
-    b.insert('app_meta', {'key': 'invoice_seq', 'value': '0'});
-    await b.commit(noResult: true);
+  }
+
+  static Future<void> _onUpgrade(Database db, int from, int to) async {
+    if (from < 2) {
+      final b = db.batch();
+      for (final col in _medicineV2Cols.split(',')) {
+        b.execute('ALTER TABLE medicines ADD COLUMN ${col.trim()}');
+      }
+      for (final col in _saleItemV2Cols.split(',')) {
+        b.execute('ALTER TABLE sale_items ADD COLUMN ${col.trim()}');
+      }
+      _createSaleReturns(b);
+      // SQLite cannot change a CHECK constraint in place, so rebuild credit_entries.
+      _createCreditEntries(b, 'credit_entries_v2');
+      b.execute('INSERT INTO credit_entries_v2 SELECT * FROM credit_entries');
+      b.execute('DROP TABLE credit_entries');
+      b.execute('ALTER TABLE credit_entries_v2 RENAME TO credit_entries');
+      b.execute('CREATE INDEX idx_credit_customer ON credit_entries(customer_id)');
+      await b.commit(noResult: true);
+    }
   }
 
   Future<String?> meta(String key, {DatabaseExecutor? txn}) async {

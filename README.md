@@ -15,6 +15,14 @@ all data is stored on the phone in SQLite. No server, no monthly cost.
    with the list of invoices.
 5. **Backup**: export everything as one JSON file through the share sheet (choose Google Drive),
    and restore it on a new phone.
+6. **English / বাংলা**: chosen on first launch, changeable in Settings. Strings live in
+   `lib/l10n/app_en.arb` and `app_bn.arb`.
+7. **Receipts**: print on a 58/80mm Bluetooth thermal printer, or share as PDF (WhatsApp etc.).
+8. **Box / strip / tablet**: stock is counted in the smallest unit; buy and sell by strip or box.
+9. **Low-stock alert**: per-medicine level, a "what to order" list you can share.
+10. **Sale return / cancel**: stock goes back to its batch; the value comes off the customer's
+    baki first, the rest is cash given back. Reports count returns on the day they happen.
+11. **PIN lock**: 4-digit PIN on start and after 30 seconds in the background.
 
 ## Run
 
@@ -29,9 +37,11 @@ flutter run
 
 ```
 lib/
-  core/      db.dart (schema), money.dart (poisha), ids.dart (UUID + sync columns)
+  core/      db.dart (schema + migrations), money.dart (poisha), ids.dart (UUID + sync columns)
   models/    plain data classes
-  data/      repositories: medicine, sale, customer, report, backup, sync_outbox
+  data/      repositories: medicine, sale, customer, report, backup, sync_outbox, shop settings, PIN
+  l10n/      English + Bangla strings (.arb) and helpers
+  receipt/   receipt layout: ESC/POS for thermal printers, PDF for sharing
   screens/   UI
 docs/
   BACKEND_SYNC.md   contract for the future backend / cloud sync (v2)
@@ -49,4 +59,4 @@ docs/
 ## Roadmap
 
 - v2 (paid): cloud sync and multiple devices, using the backend contract in `docs/`
-- Bangla UI, receipt printing (Bluetooth thermal), barcode scanning, purchase/supplier dues
+- Barcode scanning, purchase/supplier dues, Bangla on printed receipts (needs image printing)

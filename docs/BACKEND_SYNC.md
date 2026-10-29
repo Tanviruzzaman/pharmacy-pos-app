@@ -25,18 +25,29 @@ multi-device support can be added later **without changing the local data model*
 ## 2. Tables (sync order = dependency order)
 
 ```
-medicines       (id, name, generic_name, company, unit, sell_price, barcode)
+medicines       (id, name, generic_name, company, unit, sell_price, barcode,
+                 reorder_level, strip_size, box_size)
 stock_batches   (id, medicine_id, batch_no, expiry_date, qty, buy_price, sell_price)
 customers       (id, name, phone, address)
 sales           (id, invoice_no, customer_id?, sold_at, sale_date, subtotal, discount,
                  total, paid, due, cost, profit)
 sale_items      (id, sale_id, medicine_id, batch_id, medicine_name, qty,
-                 unit_price, buy_price, line_total)
-credit_entries  (id, customer_id, type['due'|'payment'], amount, sale_id?, note,
+                 unit_price, buy_price, line_total, sold_unit?, unit_factor, returned_qty)
+sale_returns    (id, sale_id, returned_at, return_date, amount, cost, refund, baki_reduced)
+credit_entries  (id, customer_id, type['due'|'payment'|'return'], amount, sale_id?, note,
                  entry_at, entry_date)
 ```
 
-Customer baki balance = `SUM(due) - SUM(payment)` over non-deleted `credit_entries`.
+Customer baki balance = `SUM(due) - SUM(payment) - SUM(return)` over non-deleted `credit_entries`.
+
+Units (schema v2): every quantity (`stock_batches.qty`, `sale_items.qty`, `returned_qty`,
+`reorder_level`) is in the medicine's base `unit` (e.g. tablet). `strip_size` / `box_size`
+are base units per strip / box (0 = not used). On `sale_items`, `unit_price` is per sold unit,
+which is `unit_factor` base units (`sold_unit` NULL = base unit).
+
+Returns (schema v2): a return adds a `sale_returns` row, bumps `sale_items.returned_qty`,
+puts the quantity back on the batch, and (for a customer with baki) adds a `'return'`
+credit entry. Reports count a return on its `return_date`, not the sale's date.
 
 Full DDL: `lib/core/db.dart`.
 
@@ -51,13 +62,14 @@ The app builds this body with `SyncOutbox.buildPushPayload()` (`lib/data/sync_ou
 ```json
 {
   "device_id": "a1f3c9e0-...",
-  "schema_version": 1,
+  "schema_version": 2,
   "sent_at": 1761710000000,
   "changes": {
     "medicines":      [ { "id": "...", "name": "Napa 500", "sell_price": 120, "created_at": 0, "updated_at": 0, "deleted": 0, ... } ],
     "stock_batches":  [ ... ],
     "sales":          [ ... ],
     "sale_items":     [ ... ],
+    "sale_returns":   [ ... ],
     "credit_entries": [ ... ]
   }
 }
@@ -67,8 +79,9 @@ Server behaviour:
 
 1. Upsert each row by `id` inside one DB transaction.
 2. **Last-write-wins**: only overwrite if incoming `updated_at` > stored `updated_at`.
-3. `sales`, `sale_items`, `credit_entries` are effectively **append-only** — they are
-   never edited, only soft-deleted. Safe to accept as-is.
+3. `sales`, `sale_returns`, `credit_entries` are effectively **append-only**: they are
+   never edited, only soft-deleted. Safe to accept as-is. `sale_items` is too, except
+   `returned_qty`, which only ever grows.
 4. Respond `200 { "accepted": <n>, "server_time": <ms> }`. The app then calls
    `SyncOutbox.markSynced(payload)`.
 

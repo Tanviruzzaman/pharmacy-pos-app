@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/ids.dart';
 import '../data/backup_service.dart';
 import '../data/sync_outbox.dart';
+import '../l10n/l10n.dart';
 import '../widgets/common.dart';
 
 class BackupScreen extends StatefulWidget {
@@ -37,26 +38,28 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _export() async {
+    final l = context.l10n;
     setState(() => _busy = true);
     try {
       await BackupService().exportAndShare();
       await _load();
     } catch (e) {
-      if (mounted) showSnack(context, 'Backup failed: $e', error: true);
+      if (mounted) showSnack(context, l.backupFailed('$e'), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _restore() async {
+    final l = context.l10n;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Restore backup?'),
-        content: const Text('All data on this phone will be REPLACED by the backup file. This cannot be undone.'),
+        title: Text(l.restoreTitle),
+        content: Text(l.restoreWarning),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Choose file')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.chooseFile)),
         ],
       ),
     );
@@ -67,10 +70,10 @@ class _BackupScreenState extends State<BackupScreen> {
     setState(() => _busy = true);
     try {
       final n = await BackupService().restoreFromFile(File(path));
-      if (mounted) showSnack(context, 'Restored $n records');
+      if (mounted) showSnack(context, l.restoredCount('$n'));
       await _load();
     } catch (e) {
-      if (mounted) showSnack(context, 'Restore failed: $e', error: true);
+      if (mounted) showSnack(context, l.restoreFailed('$e'), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -78,29 +81,27 @@ class _BackupScreenState extends State<BackupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup & restore')),
+      appBar: AppBar(title: Text(l.backupRestore)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text(
-          'All data is stored only on this phone. Back up regularly: tap "Backup now" and choose Google Drive '
-          '(or WhatsApp / email) in the share menu.',
-        ),
+        Text(l.backupInfo),
         const SizedBox(height: 16),
-        Text(_last == null ? 'Never backed up' : 'Last backup: ${displayDateTimeFmt.format(_last!)}',
+        Text(_last == null ? l.neverBackedUp : l.lastBackup(displayDateTimeFmt.format(_last!)),
             style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text('$_pending records changed since install / last cloud sync'),
+        Text(l.changedRecords('$_pending')),
         const SizedBox(height: 24),
         FilledButton.icon(
           onPressed: _busy ? null : _export,
           icon: const Icon(Icons.cloud_upload_outlined),
-          label: const Text('Backup now'),
+          label: Text(l.backupNow),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _busy ? null : _restore,
           icon: const Icon(Icons.settings_backup_restore),
-          label: const Text('Restore from file'),
+          label: Text(l.restoreFromFile),
           style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
         ),
       ]),

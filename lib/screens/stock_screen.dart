@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/ids.dart';
 import '../core/money.dart';
 import '../data/medicine_repo.dart';
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../widgets/common.dart';
 
@@ -43,23 +44,25 @@ class _StockScreenState extends State<StockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
+    final cs = Theme.of(context).colorScheme;
     final today = DateTime.now();
     return Scaffold(
-      appBar: AppBar(title: const Text('Stock')),
+      appBar: AppBar(title: Text(l.stock)),
       floatingActionButton: FloatingActionButton.extended(
-          onPressed: _addMedicine, icon: const Icon(Icons.add), label: const Text('Add medicine')),
+          onPressed: _addMedicine, icon: const Icon(Icons.add), label: Text(l.addMedicine)),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
             controller: _q,
-            decoration: const InputDecoration(hintText: 'Search medicine', prefixIcon: Icon(Icons.search)),
+            decoration: InputDecoration(hintText: l.searchMedicine, prefixIcon: const Icon(Icons.search)),
             onChanged: (_) => _load(),
           ),
         ),
         Expanded(
           child: _list.isEmpty
-              ? const EmptyState(icon: Icons.inventory_2_outlined, text: 'No medicines yet. Tap "Add medicine".')
+              ? EmptyState(icon: Icons.inventory_2_outlined, text: l.noMedicines)
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 88),
                   itemCount: _list.length,
@@ -69,19 +72,25 @@ class _StockScreenState extends State<StockScreen> {
                     final exp = m.nearestExpiry == null ? null : DateTime.parse(m.nearestExpiry!);
                     final soon = exp != null && exp.difference(today).inDays <= 90;
                     return ListTile(
-                      title: Text(m.name),
+                      title: Row(children: [
+                        Flexible(child: Text(m.name)),
+                        if (m.isLowStock) ...[
+                          const SizedBox(width: 8),
+                          _Tag(l.lowTag, cs.error),
+                        ],
+                      ]),
                       subtitle: Text([
                         if (m.genericName != null) m.genericName!,
-                        if (exp != null) 'Exp ${displayDateFmt.format(exp)}',
+                        if (exp != null) l.expShort(displayDateFmt.format(exp)),
                       ].join(' · ')),
-                      trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text('${m.stockQty} ${m.unit}',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: m.stockQty == 0 ? Theme.of(context).colorScheme.error : null)),
-                        Text(Money.format(m.sellPrice),
-                            style: TextStyle(color: soon ? Theme.of(context).colorScheme.error : null)),
-                      ]),
+                      trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('${m.stockQty} ${l.unit(m.unit)}',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: m.stockQty == 0 ? cs.error : null)),
+                            Text(Money.format(m.sellPrice), style: TextStyle(color: soon ? cs.error : null)),
+                          ]),
                       onTap: () => _open(m),
                     );
                   },
@@ -90,6 +99,19 @@ class _StockScreenState extends State<StockScreen> {
       ]),
     );
   }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag(this.text, this.color);
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(border: Border.all(color: color), borderRadius: BorderRadius.circular(4)),
+        child: Text(text, style: TextStyle(color: color, fontSize: 12)),
+      );
 }
 
 class MedicineDetailScreen extends StatefulWidget {
@@ -122,18 +144,19 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
   }
 
   Future<void> _adjust(StockBatch b) async {
+    final l = context.l10n;
     final c = TextEditingController(text: '${b.qty}');
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Batch ${b.batchNo ?? ''}'),
-        content: IntField(controller: c, label: 'Quantity in hand'),
+        title: Text(l.batchTitle(b.batchNo ?? '')),
+        content: IntField(controller: c, label: l.qtyInHand(l.unit(_m!.unit))),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, 'delete'),
-              child: Text('Delete batch', style: TextStyle(color: Theme.of(ctx).colorScheme.error))),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save')),
+              child: Text(l.deleteBatch, style: TextStyle(color: Theme.of(ctx).colorScheme.error))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(l.save)),
         ],
       ),
     );
@@ -146,8 +169,10 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
   Widget build(BuildContext context) {
     final m = _m;
     if (m == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final l = context.l10n;
     final today = DateTime.now();
     final cs = Theme.of(context).colorScheme;
+    final unit = l.unit(m.unit);
     return Scaffold(
       appBar: AppBar(title: Text(m.name), actions: [
         IconButton(
@@ -164,20 +189,24 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
           _load();
         },
         icon: const Icon(Icons.add),
-        label: const Text('Add stock'),
+        label: Text(l.addStock),
       ),
       body: ListView(padding: const EdgeInsets.only(bottom: 88), children: [
         ListTile(
-          title: Text('${m.stockQty} ${m.unit} sellable'),
+          title: Text(l.sellable(l.qty(m, m.stockQty)),
+              style: TextStyle(color: m.isLowStock ? cs.error : null, fontWeight: FontWeight.bold)),
           subtitle: Text([
             if (m.genericName != null) m.genericName!,
             if (m.company != null) m.company!,
-            'Price ${Money.format(m.sellPrice)}',
+            l.priceLabel('${Money.format(m.sellPrice)} / $unit'),
+            if (m.reorderLevel > 0) l.lowStockAt('${m.reorderLevel}'),
           ].join(' · ')),
         ),
         const Divider(),
-        const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Batches', style: TextStyle(fontWeight: FontWeight.bold))),
-        if (_batches.isEmpty) const EmptyState(icon: Icons.layers_clear, text: 'No stock batches'),
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(l.batches, style: const TextStyle(fontWeight: FontWeight.bold))),
+        if (_batches.isEmpty) EmptyState(icon: Icons.layers_clear, text: l.noBatches),
         for (final b in _batches)
           ListTile(
             onTap: () => _adjust(b),
@@ -189,54 +218,78 @@ class _MedicineDetailScreenState extends State<MedicineDetailScreen> {
                       : Icons.check_circle_outline,
               color: b.daysToExpiry(today) <= 90 ? cs.error : cs.primary,
             ),
-            title: Text('${b.qty} ${m.unit}${b.batchNo != null ? ' · Batch ${b.batchNo}' : ''}'),
-            subtitle: Text(
-                'Exp ${displayDateFmt.format(b.expiry)} · Buy ${Money.format(b.buyPrice)} · Sell ${Money.format(b.sellPrice)}'),
+            title: Text('${b.qty} $unit${b.batchNo != null ? ' · ${l.batchTitle(b.batchNo!)}' : ''}'),
+            subtitle: Text('${l.expShort(displayDateFmt.format(b.expiry))} · '
+                '${l.batchPrices(Money.format(b.buyPrice), Money.format(b.sellPrice), unit)}'),
           ),
       ]),
     );
   }
 }
 
-const units = ['pcs', 'tablet', 'capsule', 'strip', 'box', 'bottle', 'tube', 'vial', 'sachet'];
+const units = ['pcs', 'tablet', 'capsule', 'bottle', 'tube', 'vial', 'sachet', 'strip', 'box'];
+
+int _intOr0(String s) => int.tryParse(s.trim()) ?? 0;
+String _blankIf0(int v) => v == 0 ? '' : '$v';
 
 Future<Medicine?> showMedicineForm(BuildContext context, {Medicine? existing}) async {
+  final l = context.l10n;
   final name = TextEditingController(text: existing?.name);
   final generic = TextEditingController(text: existing?.genericName);
   final company = TextEditingController(text: existing?.company);
   final barcode = TextEditingController(text: existing?.barcode);
   final price = TextEditingController(text: existing == null ? '' : Money.toInput(existing.sellPrice));
-  var unit = existing?.unit ?? 'pcs';
+  final strip = TextEditingController(text: _blankIf0(existing?.stripSize ?? 0));
+  final box = TextEditingController(text: _blankIf0(existing?.boxSize ?? 0));
+  final reorder = TextEditingController(text: _blankIf0(existing?.reorderLevel ?? 0));
+  var unit = existing?.unit ?? 'tablet';
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setS) => AlertDialog(
-        title: Text(existing == null ? 'New medicine' : 'Edit medicine'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'Brand name *')),
-            const SizedBox(height: 8),
-            TextField(controller: generic, decoration: const InputDecoration(labelText: 'Generic name')),
-            const SizedBox(height: 8),
-            TextField(controller: company, decoration: const InputDecoration(labelText: 'Company')),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: units.contains(unit) ? unit : 'pcs',
-              decoration: const InputDecoration(labelText: 'Selling unit'),
-              items: [for (final u in units) DropdownMenuItem(value: u, child: Text(u))],
-              onChanged: (v) => setS(() => unit = v ?? 'pcs'),
-            ),
-            const SizedBox(height: 8),
-            MoneyField(controller: price, label: 'Selling price per unit'),
-            const SizedBox(height: 8),
-            TextField(controller: barcode, decoration: const InputDecoration(labelText: 'Barcode')),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-        ],
-      ),
+      builder: (ctx, setS) {
+        final u = l.unit(unit);
+        return AlertDialog(
+          title: Text(existing == null ? l.newMedicine : l.editMedicine),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name, autofocus: true, decoration: InputDecoration(labelText: l.brandName)),
+              const SizedBox(height: 8),
+              TextField(controller: generic, decoration: InputDecoration(labelText: l.genericName)),
+              const SizedBox(height: 8),
+              TextField(controller: company, decoration: InputDecoration(labelText: l.company)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: units.contains(unit) ? unit : 'pcs',
+                decoration: InputDecoration(labelText: l.baseUnit),
+                items: [for (final u in units) DropdownMenuItem(value: u, child: Text(l.unit(u)))],
+                onChanged: (v) => setS(() => unit = v ?? 'pcs'),
+              ),
+              const SizedBox(height: 8),
+              MoneyField(controller: price, label: l.sellPricePer(u)),
+              const SizedBox(height: 16),
+              Align(alignment: Alignment.centerLeft, child: Text(l.packSizes, style: Theme.of(ctx).textTheme.titleSmall)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: IntField(controller: strip, label: l.perStrip(u))),
+                const SizedBox(width: 8),
+                Expanded(child: IntField(controller: box, label: l.perBox(u))),
+              ]),
+              Align(alignment: Alignment.centerLeft, child: Text(l.packHint, style: Theme.of(ctx).textTheme.bodySmall)),
+              const SizedBox(height: 16),
+              IntField(controller: reorder, label: l.lowStockAt(u)),
+              Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(l.lowStockAtHint, style: Theme.of(ctx).textTheme.bodySmall)),
+              const SizedBox(height: 8),
+              TextField(controller: barcode, decoration: InputDecoration(labelText: l.barcode)),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
+          ],
+        );
+      },
     ),
   );
   if (ok != true || name.text.trim().isEmpty) return null;
@@ -249,6 +302,9 @@ Future<Medicine?> showMedicineForm(BuildContext context, {Medicine? existing}) a
       unit: unit,
       sellPrice: Money.parse(price.text),
       barcode: barcode.text,
+      stripSize: _intOr0(strip.text),
+      boxSize: _intOr0(box.text),
+      reorderLevel: _intOr0(reorder.text),
     );
   }
   final m = Medicine(
@@ -259,63 +315,89 @@ Future<Medicine?> showMedicineForm(BuildContext context, {Medicine? existing}) a
     unit: unit,
     sellPrice: Money.parse(price.text),
     barcode: barcode.text,
+    stripSize: _intOr0(strip.text),
+    boxSize: _intOr0(box.text),
+    reorderLevel: _intOr0(reorder.text),
   );
   await repo.update(m);
   return m;
 }
 
+/// Adds a batch. Quantity and buying price can be entered per box / strip;
+/// they are converted to the base unit, which is how stock is counted.
 Future<bool> showBatchForm(BuildContext context, Medicine m) async {
+  final l = context.l10n;
   final batchNo = TextEditingController();
   final qty = TextEditingController();
   final buy = TextEditingController();
   final sell = TextEditingController(text: m.sellPrice > 0 ? Money.toInput(m.sellPrice) : '');
+  final packs = m.packUnits;
+  var pack = packs.last; // usually bought by the biggest pack
   DateTime? expiry;
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setS) => AlertDialog(
-        title: Text('Add stock · ${m.name}'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: batchNo, decoration: const InputDecoration(labelText: 'Batch no.')),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.event),
-              label: Text(expiry == null ? 'Expiry date *' : 'Expiry ${displayDateFmt.format(expiry!)}'),
-              onPressed: () async {
-                final now = DateTime.now();
-                final d = await showDatePicker(
-                  context: ctx,
-                  initialDate: expiry ?? DateTime(now.year + 1, now.month, 1),
-                  firstDate: DateTime(now.year - 1),
-                  lastDate: DateTime(now.year + 10),
-                  initialDatePickerMode: DatePickerMode.year,
-                );
-                if (d != null) setS(() => expiry = d);
-              },
-            ),
-            const SizedBox(height: 8),
-            IntField(controller: qty, label: 'Quantity (${m.unit}) *'),
-            const SizedBox(height: 8),
-            MoneyField(controller: buy, label: 'Buying price per ${m.unit} *'),
-            const SizedBox(height: 8),
-            MoneyField(controller: sell, label: 'Selling price per ${m.unit} *'),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (expiry == null || (int.tryParse(qty.text) ?? 0) <= 0 || Money.parse(sell.text) <= 0) {
-                showSnack(ctx, 'Expiry, quantity and selling price are required', error: true);
-                return;
-              }
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Save'),
+      builder: (ctx, setS) {
+        final p = l.packName(m, pack);
+        return AlertDialog(
+          title: Text(l.addStockTitle(m.name)),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: batchNo, decoration: InputDecoration(labelText: l.batchNo)),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.event),
+                label: Text(expiry == null ? l.expiryRequired : l.expiryOn(displayDateFmt.format(expiry!))),
+                onPressed: () async {
+                  final now = DateTime.now();
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: expiry ?? DateTime(now.year + 1, now.month, 1),
+                    firstDate: DateTime(now.year - 1),
+                    lastDate: DateTime(now.year + 10),
+                    initialDatePickerMode: DatePickerMode.year,
+                  );
+                  if (d != null) setS(() => expiry = d);
+                },
+              ),
+              if (packs.length > 1) ...[
+                const SizedBox(height: 12),
+                Align(alignment: Alignment.centerLeft, child: Text(l.buyingIn)),
+                const SizedBox(height: 4),
+                SegmentedButton<PackUnit>(
+                  segments: [
+                    for (final pu in packs)
+                      ButtonSegment(
+                          value: pu,
+                          label: Text(pu.name == null ? l.packName(m, pu) : '${l.packName(m, pu)} (${pu.factor})')),
+                  ],
+                  selected: {pack},
+                  onSelectionChanged: (v) => setS(() => pack = v.first),
+                ),
+              ],
+              const SizedBox(height: 8),
+              IntField(controller: qty, label: l.quantityIn(p)),
+              const SizedBox(height: 8),
+              MoneyField(controller: buy, label: l.buyPricePer(p)),
+              const SizedBox(height: 8),
+              MoneyField(controller: sell, label: l.sellPricePerReq(l.unit(m.unit))),
+            ]),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+            FilledButton(
+              onPressed: () {
+                if (expiry == null || (int.tryParse(qty.text) ?? 0) <= 0 || Money.parse(sell.text) <= 0) {
+                  showSnack(ctx, l.batchRequired, error: true);
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: Text(l.save),
+            ),
+          ],
+        );
+      },
     ),
   );
   if (ok != true) return false;
@@ -323,8 +405,8 @@ Future<bool> showBatchForm(BuildContext context, Medicine m) async {
     medicineId: m.id,
     batchNo: batchNo.text,
     expiry: expiry!,
-    qty: int.parse(qty.text),
-    buyPrice: Money.parse(buy.text),
+    qty: int.parse(qty.text) * pack.factor,
+    buyPrice: (Money.parse(buy.text) / pack.factor).round(),
     sellPrice: Money.parse(sell.text),
   );
   return true;

@@ -52,6 +52,9 @@ class MedicineRepo {
     String unit = 'pcs',
     int sellPrice = 0,
     String? barcode,
+    int reorderLevel = 0,
+    int stripSize = 0,
+    int boxSize = 0,
   }) async {
     final id = newId();
     await _db.db.insert('medicines', {
@@ -62,10 +65,22 @@ class MedicineRepo {
       'unit': unit,
       'sell_price': sellPrice,
       'barcode': _blankToNull(barcode),
+      'reorder_level': reorderLevel,
+      'strip_size': stripSize,
+      'box_size': boxSize,
       ...newSyncCols(),
     });
     return Medicine(
-        id: id, name: name.trim(), genericName: genericName, company: company, unit: unit, sellPrice: sellPrice);
+      id: id,
+      name: name.trim(),
+      genericName: genericName,
+      company: company,
+      unit: unit,
+      sellPrice: sellPrice,
+      reorderLevel: reorderLevel,
+      stripSize: stripSize,
+      boxSize: boxSize,
+    );
   }
 
   Future<void> update(Medicine m) => _db.db.update(
@@ -77,6 +92,9 @@ class MedicineRepo {
           'unit': m.unit,
           'sell_price': m.sellPrice,
           'barcode': _blankToNull(m.barcode),
+          'reorder_level': m.reorderLevel,
+          'strip_size': m.stripSize,
+          'box_size': m.boxSize,
           ...touchSyncCols(),
         },
         where: 'id = ?',
@@ -139,6 +157,18 @@ class MedicineRepo {
   }
 
   Future<int> expiringCount({int withinDays = 90}) async => (await expiring(withinDays: withinDays)).length;
+
+  /// Medicines with a low-stock level set whose sellable stock is at or below it.
+  Future<List<Medicine>> lowStock() async {
+    final rows = await _db.db.rawQuery('''
+      SELECT m.*, COALESCE(s.stock_qty, 0) AS stock_qty, s.nearest_expiry
+      FROM medicines m
+      $_stockJoin
+      WHERE m.deleted = 0 AND m.reorder_level > 0 AND COALESCE(s.stock_qty, 0) <= m.reorder_level
+      ORDER BY COALESCE(s.stock_qty, 0) * 1.0 / m.reorder_level, m.name COLLATE NOCASE
+    ''', [dateKey(DateTime.now())]);
+    return rows.map(Medicine.fromMap).toList();
+  }
 
   static String? _blankToNull(String? s) => (s == null || s.trim().isEmpty) ? null : s.trim();
 }

@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../core/db.dart';
 import '../core/ids.dart';
+import 'shop_settings.dart';
 
 /// Backup = one JSON file containing every row of every synced table.
 /// The format is the same shape as the sync push payload in docs/BACKEND_SYNC.md,
@@ -29,6 +30,7 @@ class BackupService {
       'device_id': await _db.meta('device_id'),
       'invoice_seq': await _db.meta('invoice_seq'),
       'exported_at': nowMs(),
+      'shop': {for (final k in ShopSettingsRepo.shopKeys) k: await _db.meta(k)},
       'tables': tables,
     };
   }
@@ -72,6 +74,12 @@ class BackupService {
       }
       final seq = data['invoice_seq'];
       if (seq != null) await _db.setMeta('invoice_seq', '$seq', txn: txn);
+      final shop = data['shop'];
+      if (shop is Map) {
+        for (final k in ShopSettingsRepo.shopKeys) {
+          if (shop[k] != null) await _db.setMeta(k, '${shop[k]}', txn: txn);
+        }
+      }
     });
     return count;
   }

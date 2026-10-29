@@ -25,17 +25,27 @@ class ReportRepo {
       WHERE entry_date = ? AND type = 'payment' AND deleted = 0
     ''', [date]))
         .first['p'] as int;
+    // Returns count on the day they happen, whichever day the sale was.
+    final r = (await _db.db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(cost), 0) AS cost, COALESCE(SUM(refund), 0) AS refund
+      FROM sale_returns WHERE return_date = ? AND deleted = 0
+    ''', [date]))
+        .first;
+    final returns = r['amount'] as int;
+    final returnCost = r['cost'] as int;
 
     return DailyReport(
       date: date,
       saleCount: s['n'] as int,
       totalSales: s['total'] as int,
       totalDiscount: s['discount'] as int,
-      totalCost: s['cost'] as int,
-      profit: s['profit'] as int,
+      totalCost: (s['cost'] as int) - returnCost,
+      profit: (s['profit'] as int) - (returns - returnCost),
       cashFromSales: s['paid'] as int,
       dueGiven: s['due'] as int,
       duePaymentsReceived: payments,
+      returns: returns,
+      refunds: r['refund'] as int,
       sales: await SaleRepo(_db).salesOn(date),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/money.dart';
 import '../data/customer_repo.dart';
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 
 /// Search existing customers or create a new one. Returns the chosen customer.
@@ -12,24 +13,24 @@ Future<Customer?> pickCustomer(BuildContext context) => showDialog<Customer>(
 
 /// Simple add/edit customer dialog. Returns the saved customer.
 Future<Customer?> editCustomer(BuildContext context, {Customer? existing, String initialName = ''}) async {
+  final l = context.l10n;
   final name = TextEditingController(text: existing?.name ?? initialName);
   final phone = TextEditingController(text: existing?.phone ?? '');
   final address = TextEditingController(text: existing?.address ?? '');
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(existing == null ? 'New customer' : 'Edit customer'),
+      title: Text(existing == null ? l.newCustomer : l.editCustomer),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'Name *')),
+        TextField(controller: name, autofocus: true, decoration: InputDecoration(labelText: l.nameRequired)),
         const SizedBox(height: 8),
-        TextField(
-            controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: l.phone)),
         const SizedBox(height: 8),
-        TextField(controller: address, decoration: const InputDecoration(labelText: 'Address')),
+        TextField(controller: address, decoration: InputDecoration(labelText: l.address)),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
       ],
     ),
   );
@@ -67,8 +68,9 @@ class _CustomerPickerState extends State<_CustomerPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return AlertDialog(
-      title: const Text('Customer'),
+      title: Text(l.customer),
       content: SizedBox(
         width: double.maxFinite,
         height: 400,
@@ -76,7 +78,7 @@ class _CustomerPickerState extends State<_CustomerPicker> {
           TextField(
             controller: _q,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Search name or phone', prefixIcon: Icon(Icons.search)),
+            decoration: InputDecoration(hintText: l.searchNamePhone, prefixIcon: const Icon(Icons.search)),
             onChanged: (_) => _load(),
           ),
           const SizedBox(height: 8),
@@ -94,10 +96,10 @@ class _CustomerPickerState extends State<_CustomerPicker> {
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),
         FilledButton.icon(
           icon: const Icon(Icons.person_add),
-          label: const Text('New'),
+          label: Text(l.newLabel),
           onPressed: () async {
             final c = await editCustomer(context, initialName: _q.text);
             if (c != null && context.mounted) Navigator.pop(context, c);
